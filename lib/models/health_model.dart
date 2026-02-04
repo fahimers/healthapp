@@ -9,6 +9,13 @@ class StepData {
     required this.timestamp,
   });
 
+  /// Converts steps to calories burned
+  /// Average: 1 step = 0.04 calories (varies by weight, pace, etc.)
+  double get caloriesBurned => steps * 0.04;
+
+  /// Returns calories with 2 decimal places
+  String get caloriesFormated => caloriesBurned.toStringAsFixed(2);
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
