@@ -1,5 +1,9 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
 import '../providers/health_provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -11,6 +15,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _stepsController = TextEditingController();
+  final TextEditingController _foodSearchController = TextEditingController();
+  bool _isFoodLoading = false;
+  String? _foodName;
+  String? _foodCalories;
+  String? _foodError;
+  bool _isFoodSearchLoading = false;
+  List<Map<String, dynamic>> _foodSearchResults = [];
+  String? _foodSearchError;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '$todayCalories',
+                          todayCalories,
                           style: const TextStyle(
                             fontSize: 56,
                             fontWeight: FontWeight.bold,
@@ -229,6 +241,176 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Food Search with Dropdown
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Search Food Calories',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _foodSearchController,
+                          decoration: InputDecoration(
+                            labelText: 'Type at least 3 letters',
+                            hintText: 'e.g., app, ban, chi',
+                            prefixIcon: const Icon(Icons.search),
+                            suffixIcon: _foodSearchController.text.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      setState(() {
+                                        _foodSearchController.clear();
+                                        _foodSearchResults.clear();
+                                        _foodSearchError = null;
+                                      });
+                                    },
+                                  )
+                                : null,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          onChanged: (value) {
+                            if (value.length >= 3) {
+                              _searchFood(value);
+                            } else {
+                              setState(() {
+                                _foodSearchResults.clear();
+                                _foodSearchError = null;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        if (_isFoodSearchLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (_foodSearchError != null)
+                          Text(
+                            _foodSearchError!,
+                            style: const TextStyle(color: Colors.red),
+                          )
+                        else if (_foodSearchResults.isNotEmpty)
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 200),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade300),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: _foodSearchResults.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final food = _foodSearchResults[index];
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    food['name'] ?? 'Unknown',
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  subtitle: Text(
+                                    food['calories'] ?? 'Calories unavailable',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange.shade700,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.food_bank, size: 20),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Random Food Calories
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Random Food Calories',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_isFoodLoading)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (_foodError != null)
+                          Text(
+                            _foodError!,
+                            style: const TextStyle(color: Colors.red),
+                          )
+                        else if (_foodName != null)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _foodName!,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _foodCalories ?? 'Calories unavailable',
+                                style: TextStyle(
+                                  color: Colors.orange.shade700,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          )
+                        else
+                          const Text(
+                            'Tap the button to fetch a random food item.',
+                          ),
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
+                          onPressed: _isFoodLoading ? null : _fetchRandomFood,
+                          icon: const Icon(Icons.shuffle),
+                          label: const Text('Get Random Food'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
 
                 // Reset Button
                 ElevatedButton.icon(
@@ -449,6 +631,151 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _stepsController.dispose();
+    _foodSearchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _searchFood(String query) async {
+    if (query.length < 3) return;
+
+    setState(() {
+      _isFoodSearchLoading = true;
+      _foodSearchError = null;
+    });
+
+    try {
+      final uri = Uri.parse(
+        'https://world.openfoodfacts.org/cgi/search.pl'
+        '?search_terms=${Uri.encodeComponent(query)}'
+        '&search_simple=1'
+        '&action=process'
+        '&json=1'
+        '&page_size=10'
+        '&fields=product_name,product_name_en,nutriments',
+      );
+      
+      final response = await http.get(
+        uri,
+        headers: const {'User-Agent': 'health-tracking-app/1.0'},
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Request failed');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final products = data['products'] as List<dynamic>?;
+
+      if (products == null || products.isEmpty) {
+        setState(() {
+          _foodSearchResults.clear();
+          _foodSearchError = 'No foods found matching "$query"';
+        });
+        return;
+      }
+
+      final results = <Map<String, dynamic>>[];
+      for (var product in products) {
+        final productMap = product as Map<String, dynamic>;
+        final name = (productMap['product_name'] ?? 
+                     productMap['product_name_en'] ?? 
+                     'Unknown food') as String;
+        
+        final nutriments = productMap['nutriments'] as Map<String, dynamic>?;
+        double? kcal;
+        final kcalValue = nutriments?['energy-kcal_100g'] ?? 
+                         nutriments?['energy-kcal'];
+        if (kcalValue is num) {
+          kcal = kcalValue.toDouble();
+        } else if (kcalValue is String) {
+          kcal = double.tryParse(kcalValue);
+        }
+
+        results.add({
+          'name': name.trim().isEmpty ? 'Unknown food' : name,
+          'calories': kcal != null
+              ? '${kcal.toStringAsFixed(0)} kcal / 100g'
+              : 'Calories unavailable',
+        });
+      }
+
+      setState(() {
+        _foodSearchResults = results;
+      });
+    } catch (_) {
+      setState(() {
+        _foodSearchError = 'Failed to search. Please try again.';
+        _foodSearchResults.clear();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFoodSearchLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchRandomFood() async {
+    setState(() {
+      _isFoodLoading = true;
+      _foodError = null;
+    });
+
+    try {
+      final randomPage = Random().nextInt(2000) + 1;
+      final uri = Uri.parse(
+        'https://world.openfoodfacts.org/api/v2/search'
+        '?fields=product_name,product_name_en,nutriments'
+        '&page_size=1'
+        '&page=$randomPage',
+      );
+      final response = await http.get(
+        uri,
+        headers: const {'User-Agent': 'health-tracking-app/1.0'},
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Request failed');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final products = data['products'] as List<dynamic>?;
+      final product = products != null && products.isNotEmpty
+          ? products.first as Map<String, dynamic>
+          : null;
+
+      if (product == null) {
+        throw Exception('No product');
+      }
+
+      final name = (product['product_name'] ?? product['product_name_en'] ?? 'Unknown food') as String;
+      final nutriments = product['nutriments'] as Map<String, dynamic>?;
+
+      double? kcal;
+      final kcalValue = nutriments?['energy-kcal_100g'] ?? nutriments?['energy-kcal'];
+      if (kcalValue is num) {
+        kcal = kcalValue.toDouble();
+      } else if (kcalValue is String) {
+        kcal = double.tryParse(kcalValue);
+      }
+
+      setState(() {
+        _foodName = name.trim().isEmpty ? 'Unknown food' : name;
+        _foodCalories = kcal != null
+            ? '${kcal.toStringAsFixed(0)} kcal / 100g'
+            : 'Calories unavailable';
+      });
+    } catch (_) {
+      setState(() {
+        _foodError = 'Failed to load random food. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isFoodLoading = false;
+        });
+      }
+    }
   }
 }
